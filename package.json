@@ -17,5 +17,8 @@
   "bugs": {
     "url": "https://github.com/boichuk-karyna/-backend-course-2026-4/issues"
   },
-  "homepage": "https://github.com/boichuk-karyna/-backend-course-2026-4#readme"
+  "homepage": "https://github.com/boichuk-karyna/-backend-course-2026-4#readme",
+  "dependencies": {
+    "commander": "^14.0.3"
+  }
 }
