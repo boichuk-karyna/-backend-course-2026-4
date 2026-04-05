@@ -43,7 +43,8 @@ const server = http.createServer(async (req, res) => {
 
     const jsonData = await readJson();
 
-    let banks = jsonData;
+    
+    let banks = jsonData.banks || jsonData;
 
     if (showNormal) {
         banks = banks.filter(bank => bank.COD_STATE == 1);
@@ -54,9 +55,15 @@ const server = http.createServer(async (req, res) => {
             bank: banks.map(bank => {
                 let obj = {};
 
-                if (showMfo) obj.mfo_code = bank.MFO;
+                if (showMfo) {
+                    obj.mfo_code = bank.MFO;
+                }
+
                 obj.name = bank.NAME;
-                if (showNormal || showMfo) obj.state_code = bank.COD_STATE;
+
+                if (showNormal || showMfo) {
+                    obj.state_code = bank.COD_STATE;
+                }
 
                 return obj;
             })
