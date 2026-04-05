@@ -1,104 +1,99 @@
 const http = require('http');
 const fs = require('fs').promises;
-const url = require('url');
+const { program } = require('commander');
 const { XMLBuilder } = require('fast-xml-parser');
 
+program
+  .requiredOption('-i, --input <path>', 'Шлях до файлу для читання')
+  .requiredOption('-h, --host <host>', 'Адреса сервера')
+  .requiredOption('-p, --port <port>', 'Порт сервера');
 
-const args = process.argv.slice(2);
-
-let inputFile, host, port;
-
-for (let i = 0; i < args.length; i++) {
-    if (args[i] === '-i' || args[i] === '--input') {
-        inputFile = args[i + 1];
-    }
-    if (args[i] === '-h' || args[i] === '--host') {
-        host = args[i + 1];
-    }
-    if (args[i] === '-p' || args[i] === '--port') {
-        port = args[i + 1];
-    }
-}
+program.parse(process.argv);
+const options = program.opts();
 
 
-if (!inputFile || !host || !port) {
-    console.error("Missing required parameters");
+async function checkFileExists(filePath) {
+  try {
+    await fs.access(filePath);
+  } catch (error) {
+    console.error('Cannot find input file');
     process.exit(1);
+  }
 }
 
 
-async function readJson() {
-    const data = await fs.readFile(inputFile, 'utf8');
-    return JSON.parse(data);
-}
+async function startServer() {
+  await checkFileExists(options.input);
 
-
-const server = http.createServer(async (req, res) => {
+  const server = http.createServer(async (req, res) => {
     try {
-        const parsedUrl = url.parse(req.url, true);
-        const query = parsedUrl.query;
+      const url = new URL(req.url, `http://${options.host}:${options.port}`);
 
-        const showMfo = query.mfo === 'true';
-        const showNormal = query.normal === 'true';
+      const showMfo = url.searchParams.get('mfo') === 'true';
+      const showNormal = url.searchParams.get('normal') === 'true';
 
-        const jsonData = await readJson();
+      const rawData = await fs.readFile(options.input, 'utf-8');
+      const jsonData = JSON.parse(rawData);
 
-       
-        let banks = Array.isArray(jsonData)
-            ? jsonData
-            : jsonData.banks || [];
+      let banks = Array.isArray(jsonData)
+        ? jsonData
+        : jsonData.banks || [];
 
-     
-        if (showNormal) {
-            banks = banks.filter(bank => Number(bank.COD_STATE) === 1);
+      
+      if (showNormal) {
+        banks = banks.filter(bank => Number(bank.COD_STATE) === 1);
+      }
+
+      
+      const finalData = banks.map(bank => {
+        const obj = {};
+
+        if (showMfo && bank.MFO !== undefined) {
+          obj.mfo_code = bank.MFO;
         }
 
-   
-        const result = {
-            banks: {
-                bank: banks.map(bank => {
-                    const obj = {};
+        const nameKey = Object.keys(bank).find(k =>
+          k.toLowerCase().includes("name")
+        );
 
-                   
-                    if (showMfo && bank.MFO !== undefined) {
-                        obj.mfo_code = bank.MFO;
-                    }
-
-                  
-                    const nameKey = Object.keys(bank).find(k =>
-                        k.toLowerCase().includes("name")
-                    );
-
-                    obj.name = nameKey ? bank[nameKey] : "Unknown";
-
-                   
-                    if (showNormal && bank.COD_STATE !== undefined) {
-                        obj.state_code = bank.COD_STATE;
-                    }
-
-                    return obj;
-                })
-            }
-        };
-
-        const builder = new XMLBuilder();
-        const xml = builder.build(result);
-
-        res.writeHead(200, { 'Content-Type': 'application/xml' });
-        res.end(xml);
-
-    } catch (err) {
-        if (err.code === 'ENOENT') {
-            res.writeHead(500);
-            res.end("Cannot find input file");
-        } else {
-            res.writeHead(500);
-            res.end("Server error");
+        if (nameKey) {
+          obj.name = bank[nameKey];
         }
+
+        if (showNormal && bank.COD_STATE !== undefined) {
+          obj.state_code = bank.COD_STATE;
+        }
+
+        return obj;
+      });
+
+      const builder = new XMLBuilder({
+        format: true
+      });
+
+      const xmlObj = {
+        banks: {
+          bank: finalData
+        }
+      };
+
+      const xmlContent = builder.build(xmlObj);
+
+      await fs.writeFile('output.xml', xmlContent, 'utf-8');
+
+      res.writeHead(200, { 'Content-Type': 'application/xml' });
+      res.end(xmlContent);
+
+    } catch (error) {
+      console.error("Server error:", error);
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+      res.end('Internal Server Error');
     }
-});
+  });
 
+  server.listen(options.port, options.host, () => {
+    console.log(`Server running at http://${options.host}:${options.port}`);
+  });
+}
 
-server.listen(port, host, () => {
-    console.log(`Server running at http://${host}:${port}/`);
-});
+startServer();
