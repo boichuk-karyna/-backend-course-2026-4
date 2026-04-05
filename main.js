@@ -59,7 +59,7 @@ const server = http.createServer(async (req, res) => {
                 bank: banks.map(bank => {
                     const obj = {};
 
-                    // MFO
+                   
                     if (showMfo && bank.MFO !== undefined) {
                         obj.mfo_code = bank.MFO;
                     }
